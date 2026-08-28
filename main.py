@@ -23,7 +23,7 @@ def load_data():
 
     records = []
 
-    # 반드시 seoul.csv 사용
+    # 파일 이름은 반드시 seoul.csv
     with open("seoul.csv", "r", encoding="utf-8-sig") as file:
 
         reader = csv.DictReader(file)
@@ -31,7 +31,7 @@ def load_data():
         for row in reader:
 
             try:
-                # 날짜 앞뒤 공백/탭 제거
+                # 날짜 앞뒤의 공백이나 탭 제거
                 date_text = row["날짜"].strip()
 
                 current_date = datetime.strptime(
@@ -39,7 +39,7 @@ def load_data():
                     "%Y-%m-%d"
                 ).date()
 
-                # 평균기온이 없는 행은 제외
+                # 평균기온
                 avg_text = row["평균기온"].strip()
 
                 if not avg_text:
@@ -74,7 +74,6 @@ def load_data():
                 })
 
             except (ValueError, KeyError):
-                # 잘못된 데이터는 건너뜀
                 continue
 
     return records
@@ -85,18 +84,25 @@ def load_data():
 # ==================================================
 
 try:
+
     data = load_data()
 
 except FileNotFoundError:
+
     st.error(
         "seoul.csv 파일을 찾을 수 없습니다.\n\n"
         "app.py와 seoul.csv를 같은 폴더에 넣어 주세요."
     )
+
     st.stop()
 
 
 if not data:
-    st.error("seoul.csv에서 기온 데이터를 읽지 못했습니다.")
+
+    st.error(
+        "seoul.csv에서 기온 데이터를 읽지 못했습니다."
+    )
+
     st.stop()
 
 
@@ -121,11 +127,11 @@ st.title("🌡️ 서울 기온 랭킹")
 
 st.write(
     f"**{first_date.year}년부터 {last_date.year}년까지**의 "
-    "서울 기온 기록을 비교합니다."
+    "서울 기온 기록과 비교해 보세요."
 )
 
 st.caption(
-    "날짜를 선택하면 같은 기간의 역대 평균기온 순위를 알려드려요."
+    "원하는 기간을 선택하면 같은 날짜의 역대 평균기온을 비교합니다."
 )
 
 st.divider()
@@ -135,30 +141,38 @@ st.divider()
 # 날짜 선택
 # ==================================================
 
-st.subheader("📅 기간 선택")
+st.subheader("📅 비교할 기간")
 
-selected_dates = st.date_input(
-    "시작일과 종료일을 선택하세요",
-    value=(last_date, last_date),
-    min_value=first_date,
-    max_value=last_date,
-    format="YYYY/MM/DD"
+st.caption(
+    "시작 날짜와 종료 날짜를 각각 선택할 수 있습니다."
 )
 
 
-# 날짜를 하나만 선택했을 경우
-if not isinstance(selected_dates, (tuple, list)):
-    st.info("시작일과 종료일을 선택해 주세요.")
-    st.stop()
+col1, col2 = st.columns(2)
 
 
-if len(selected_dates) != 2:
-    st.info("달력에서 종료일까지 선택해 주세요.")
-    st.stop()
+with col1:
+
+    start_date = st.date_input(
+        "시작 날짜",
+        value=last_date,
+        min_value=first_date,
+        max_value=last_date,
+        format="YYYY/MM/DD",
+        key="start_date"
+    )
 
 
-start_date = selected_dates[0]
-end_date = selected_dates[1]
+with col2:
+
+    end_date = st.date_input(
+        "종료 날짜",
+        value=last_date,
+        min_value=first_date,
+        max_value=last_date,
+        format="YYYY/MM/DD",
+        key="end_date"
+    )
 
 
 # ==================================================
@@ -166,20 +180,38 @@ end_date = selected_dates[1]
 # ==================================================
 
 if start_date > end_date:
-    st.warning("시작일은 종료일보다 앞이어야 합니다.")
+
+    st.error(
+        "⚠️ 종료 날짜는 시작 날짜보다 뒤여야 합니다."
+    )
+
     st.stop()
 
 
-# 현재 버전은 같은 연도 안에서 비교
 if start_date.year != end_date.year:
-    st.warning(
-        "현재는 같은 연도 안의 기간만 비교할 수 있습니다.\n\n"
-        "예: 2026/08/01 ~ 2026/08/07"
+
+    st.error(
+        "⚠️ 시작 날짜와 종료 날짜는 같은 연도여야 합니다."
     )
+
     st.stop()
 
 
 selected_year = start_date.year
+
+
+# ==================================================
+# 선택 기간 길이
+# ==================================================
+
+selected_days = (
+    end_date - start_date
+).days + 1
+
+
+st.caption(
+    f"선택한 기간 · 총 {selected_days}일"
+)
 
 
 # ==================================================
@@ -192,6 +224,7 @@ yearly_results = []
 for year in years:
 
     try:
+
         comparison_start = date(
             year,
             start_date.month,
@@ -205,17 +238,16 @@ for year in years:
         )
 
     except ValueError:
-        # 2월 29일처럼 해당 연도에 없는 날짜
+
+        # 2월 29일처럼 특정 연도에 없는 날짜
         continue
 
 
-    # 비교해야 하는 전체 날짜 수
     expected_days = (
         comparison_end - comparison_start
     ).days + 1
 
 
-    # 해당 연도의 기간 데이터
     period_data = [
         item
         for item in data
@@ -225,50 +257,50 @@ for year in years:
     ]
 
 
-    # 하루라도 데이터가 빠진 연도는 제외
+    # 데이터가 하루라도 빠져 있으면
+    # 해당 연도는 비교 대상에서 제외
     if len(period_data) != expected_days:
         continue
 
 
-    # ------------------------------
-    # 평균기온
-    # ------------------------------
-
+    # 평균기온 계산
     avg_temperature = sum(
         item["avg"]
         for item in period_data
     ) / len(period_data)
 
 
-    # ------------------------------
-    # 최저기온
-    # ------------------------------
-
+    # 최저기온 계산
     valid_min = [
         item["min"]
         for item in period_data
         if item["min"] is not None
     ]
 
+
     if valid_min:
+
         period_min = min(valid_min)
+
     else:
+
         period_min = None
 
 
-    # ------------------------------
-    # 최고기온
-    # ------------------------------
-
+    # 최고기온 계산
     valid_max = [
         item["max"]
         for item in period_data
         if item["max"] is not None
     ]
 
+
     if valid_max:
+
         period_max = max(valid_max)
+
     else:
+
         period_max = None
 
 
@@ -290,8 +322,12 @@ yearly_results.sort(
 )
 
 
+# ==================================================
 # 순위 부여
+# ==================================================
+
 for index, result in enumerate(yearly_results):
+
     result["rank"] = index + 1
 
 
@@ -305,12 +341,14 @@ selected_result = None
 for result in yearly_results:
 
     if result["year"] == selected_year:
+
         selected_result = result
+
         break
 
 
 # ==================================================
-# 결과가 없을 경우
+# 데이터가 없을 경우
 # ==================================================
 
 if selected_result is None:
@@ -324,7 +362,7 @@ if selected_result is None:
 
 
 # ==================================================
-# 결과 계산
+# 결과
 # ==================================================
 
 rank = selected_result["rank"]
@@ -339,47 +377,66 @@ percentile = (
 
 
 # ==================================================
-# 평가 문구
+# 평가
 # ==================================================
 
 if rank == 1:
 
     emoji = "🏆"
+
     message = "역대 가장 더웠던 기간"
-    detail = "서울 기온 기록 중 1위입니다."
+
+    detail = (
+        "서울 기온 기록 중 "
+        "가장 높은 평균기온을 기록했습니다."
+    )
+
 
 elif percentile <= 5:
 
     emoji = "🔥"
+
     message = "역대급으로 더웠던 기간"
+
     detail = (
         f"전체 기록 중 상위 "
-        f"{percentile:.1f}%에 해당합니다."
+        f"{percentile:.1f}%입니다."
     )
+
 
 elif percentile <= 20:
 
     emoji = "☀️"
+
     message = "상당히 더웠던 기간"
+
     detail = (
         f"전체 기록 중 상위 "
-        f"{percentile:.1f}%에 해당합니다."
+        f"{percentile:.1f}%입니다."
     )
+
 
 elif percentile <= 50:
 
     emoji = "🌤️"
+
     message = "비교적 따뜻했던 기간"
+
     detail = (
-        f"{total}개 연도의 같은 기간과 비교했습니다."
+        f"{total}개 연도의 같은 기간과 "
+        "비교한 결과입니다."
     )
+
 
 else:
 
     emoji = "🌿"
+
     message = "비교적 선선했던 기간"
+
     detail = (
-        f"{total}개 연도의 같은 기간과 비교했습니다."
+        f"{total}개 연도의 같은 기간과 "
+        "비교한 결과입니다."
     )
 
 
@@ -388,7 +445,11 @@ else:
 # ==================================================
 
 st.write("")
+
+st.divider()
+
 st.caption("선택한 기간")
+
 
 if start_date == end_date:
 
@@ -410,15 +471,19 @@ else:
     )
 
 
-st.divider()
+st.caption(
+    f"총 {selected_days}일간의 평균기온"
+)
 
 
 # ==================================================
 # 메인 랭킹
 # ==================================================
 
+st.write("")
+
 st.markdown(
-    f"### {emoji} {total}개 연도 중 평균기온 순위"
+    f"### {emoji} {total}개 연도 중"
 )
 
 st.markdown(
@@ -427,15 +492,15 @@ st.markdown(
 
 st.caption(
     "같은 날짜·기간의 평균기온을 "
-    "높은 순서로 비교했습니다."
+    "높은 순서로 비교한 결과"
 )
 
+
+# ==================================================
+# 주요 기온
+# ==================================================
+
 st.write("")
-
-
-# ==================================================
-# 평균 / 최고 / 최저
-# ==================================================
 
 col1, col2, col3 = st.columns(3)
 
@@ -487,7 +552,7 @@ with col3:
 
 
 # ==================================================
-# 한줄 평가
+# 평가 메시지
 # ==================================================
 
 st.write("")
@@ -500,12 +565,14 @@ if rank == 1:
         f"{detail}"
     )
 
+
 elif percentile <= 20:
 
     st.warning(
         f"{emoji} **{message}**\n\n"
         f"{detail}"
     )
+
 
 else:
 
@@ -520,16 +587,27 @@ else:
 # ==================================================
 
 st.write("")
+
 st.divider()
 
 st.subheader("🏅 같은 기간 역대 TOP 5")
 
-st.caption(
-    f"매년 {start_date.month}월 {start_date.day}일"
-    f" ~ "
-    f"{end_date.month}월 {end_date.day}일의 "
-    "평균기온을 비교했습니다."
-)
+
+if start_date == end_date:
+
+    st.caption(
+        f"매년 {start_date.month}월 "
+        f"{start_date.day}일의 평균기온"
+    )
+
+else:
+
+    st.caption(
+        f"매년 {start_date.month}월 "
+        f"{start_date.day}일 ~ "
+        f"{end_date.month}월 "
+        f"{end_date.day}일의 평균기온"
+    )
 
 
 top5 = yearly_results[:5]
@@ -537,17 +615,23 @@ top5 = yearly_results[:5]
 
 for result in top5:
 
-    # 메달
     if result["rank"] == 1:
+
         medal = "🥇"
 
+
     elif result["rank"] == 2:
+
         medal = "🥈"
 
+
     elif result["rank"] == 3:
+
         medal = "🥉"
 
+
     else:
+
         medal = f"{result['rank']}위"
 
 
@@ -568,7 +652,7 @@ for result in top5:
         if result["year"] == selected_year:
 
             st.markdown(
-                f"**{result['year']}년**  ← 선택"
+                f"**{result['year']}년** ← 선택"
             )
 
         else:
@@ -586,7 +670,7 @@ for result in top5:
 
 
 # ==================================================
-# 선택 연도가 TOP 5 밖에 있을 경우
+# 선택한 연도가 TOP 5 밖일 경우
 # ==================================================
 
 if rank > 5:
@@ -599,17 +683,20 @@ if rank > 5:
         [1, 3, 2]
     )
 
+
     with col_rank:
 
         st.markdown(
             f"### {rank}위"
         )
 
+
     with col_year:
 
         st.markdown(
             f"**{selected_year}년** ← 선택"
         )
+
 
     with col_temp:
 
@@ -623,12 +710,14 @@ if rank > 5:
 # ==================================================
 
 st.write("")
+
 st.divider()
 
 st.subheader("📊 역대 TOP 10")
 
 st.caption(
-    "같은 기간의 평균기온이 높았던 연도입니다."
+    "같은 기간의 평균기온이 "
+    "가장 높았던 연도"
 )
 
 
@@ -649,10 +738,11 @@ st.bar_chart(
 
 
 # ==================================================
-# 하단 정보
+# 데이터 정보
 # ==================================================
 
 st.write("")
+
 st.divider()
 
 st.caption(
