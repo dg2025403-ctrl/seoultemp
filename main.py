@@ -1,29 +1,28 @@
 import streamlit as st
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 
-# ==================================================
+# =========================================================
 # 페이지 설정
-# ==================================================
+# =========================================================
 
 st.set_page_config(
-    page_title="서울 기온 랭킹",
+    page_title="서울 기온 분석",
     page_icon="🌡️",
-    layout="centered"
+    layout="wide"
 )
 
 
-# ==================================================
-# CSV 불러오기
-# ==================================================
+# =========================================================
+# CSV 데이터 불러오기
+# =========================================================
 
 @st.cache_data
 def load_data():
 
     records = []
 
-    # 파일 이름은 반드시 seoul.csv
     with open("seoul.csv", "r", encoding="utf-8-sig") as file:
 
         reader = csv.DictReader(file)
@@ -50,17 +49,14 @@ def load_data():
                 max_temp = None
 
                 if row["최저기온"].strip():
-
                     min_temp = float(
                         row["최저기온"].strip()
                     )
 
                 if row["최고기온"].strip():
-
                     max_temp = float(
                         row["최고기온"].strip()
                     )
-
 
                 records.append({
                     "date": current_date,
@@ -69,13 +65,9 @@ def load_data():
                     "max": max_temp
                 })
 
-
             except (ValueError, KeyError):
-
                 continue
 
-
-    # 날짜 순 정렬
     records.sort(
         key=lambda x: x["date"]
     )
@@ -83,12 +75,11 @@ def load_data():
     return records
 
 
-# ==================================================
+# =========================================================
 # 데이터 준비
-# ==================================================
+# =========================================================
 
 try:
-
     data = load_data()
 
 except FileNotFoundError:
@@ -104,7 +95,7 @@ except FileNotFoundError:
 if not data:
 
     st.error(
-        "seoul.csv에서 데이터를 읽지 못했습니다."
+        "seoul.csv에서 기온 데이터를 읽지 못했습니다."
     )
 
     st.stop()
@@ -114,37 +105,311 @@ first_date = data[0]["date"]
 last_date = data[-1]["date"]
 
 
-# 날짜 → 데이터
+# 날짜로 바로 검색하기 위한 딕셔너리
 data_by_date = {
     item["date"]: item
     for item in data
 }
 
 
-# ==================================================
-# 제목
-# ==================================================
+# =========================================================
+# 기간 분석 함수
+# =========================================================
 
-st.title("🌡️ 서울 기온 랭킹")
+def analyze_period(start, end):
+
+    current = start
+
+    records = []
+
+    expected_days = (
+        end - start
+    ).days + 1
+
+
+    while current <= end:
+
+        if current in data_by_date:
+            records.append(
+                data_by_date[current]
+            )
+
+        current += timedelta(days=1)
+
+
+    if not records:
+        return None
+
+
+    # -----------------------------------------------------
+    # 데이터 완성도
+    # -----------------------------------------------------
+
+    actual_days = len(records)
+
+    completeness = (
+        actual_days / expected_days
+    ) * 100
+
+
+    # -----------------------------------------------------
+    # 평균기온
+    # -----------------------------------------------------
+
+    avg_values = [
+        r["avg"]
+        for r in records
+    ]
+
+    average = (
+        sum(avg_values)
+        / len(avg_values)
+    )
+
+
+    # -----------------------------------------------------
+    # 최저기온
+    # -----------------------------------------------------
+
+    min_values = [
+        r["min"]
+        for r in records
+        if r["min"] is not None
+    ]
+
+
+    # -----------------------------------------------------
+    # 최고기온
+    # -----------------------------------------------------
+
+    max_values = [
+        r["max"]
+        for r in records
+        if r["max"] is not None
+    ]
+
+
+    # -----------------------------------------------------
+    # 평균 최저기온
+    # -----------------------------------------------------
+
+    average_min = None
+
+    if min_values:
+
+        average_min = (
+            sum(min_values)
+            / len(min_values)
+        )
+
+
+    # -----------------------------------------------------
+    # 평균 최고기온
+    # -----------------------------------------------------
+
+    average_max = None
+
+    if max_values:
+
+        average_max = (
+            sum(max_values)
+            / len(max_values)
+        )
+
+
+    # -----------------------------------------------------
+    # 기간 전체 최저기온
+    # -----------------------------------------------------
+
+    absolute_min = None
+    coldest_day = None
+
+    if min_values:
+
+        valid_records = [
+            r
+            for r in records
+            if r["min"] is not None
+        ]
+
+        coldest_record = min(
+            valid_records,
+            key=lambda x: x["min"]
+        )
+
+        absolute_min = coldest_record["min"]
+        coldest_day = coldest_record["date"]
+
+
+    # -----------------------------------------------------
+    # 기간 전체 최고기온
+    # -----------------------------------------------------
+
+    absolute_max = None
+    hottest_day = None
+
+    if max_values:
+
+        valid_records = [
+            r
+            for r in records
+            if r["max"] is not None
+        ]
+
+        hottest_record = max(
+            valid_records,
+            key=lambda x: x["max"]
+        )
+
+        absolute_max = hottest_record["max"]
+        hottest_day = hottest_record["date"]
+
+
+    # -----------------------------------------------------
+    # 가장 평균기온이 높았던 날
+    # -----------------------------------------------------
+
+    warmest_avg_record = max(
+        records,
+        key=lambda x: x["avg"]
+    )
+
+
+    # -----------------------------------------------------
+    # 가장 평균기온이 낮았던 날
+    # -----------------------------------------------------
+
+    coldest_avg_record = min(
+        records,
+        key=lambda x: x["avg"]
+    )
+
+
+    # -----------------------------------------------------
+    # 30도 이상 일수
+    # -----------------------------------------------------
+
+    days_over_30 = sum(
+        1
+        for r in records
+        if r["max"] is not None
+        and r["max"] >= 30
+    )
+
+
+    # -----------------------------------------------------
+    # 35도 이상 일수
+    # -----------------------------------------------------
+
+    days_over_35 = sum(
+        1
+        for r in records
+        if r["max"] is not None
+        and r["max"] >= 35
+    )
+
+
+    # -----------------------------------------------------
+    # 영하 일수
+    # =====================================================
+
+    days_below_zero = sum(
+        1
+        for r in records
+        if r["min"] is not None
+        and r["min"] < 0
+    )
+
+
+    # -----------------------------------------------------
+    # 일교차 평균
+    # -----------------------------------------------------
+
+    daily_ranges = [
+        r["max"] - r["min"]
+        for r in records
+        if r["max"] is not None
+        and r["min"] is not None
+    ]
+
+
+    average_range = None
+
+    if daily_ranges:
+
+        average_range = (
+            sum(daily_ranges)
+            / len(daily_ranges)
+        )
+
+
+    return {
+
+        "start": start,
+        "end": end,
+
+        "expected_days": expected_days,
+        "actual_days": actual_days,
+        "completeness": completeness,
+
+        "average": average,
+
+        "average_min": average_min,
+        "average_max": average_max,
+
+        "absolute_min": absolute_min,
+        "absolute_max": absolute_max,
+
+        "coldest_day": coldest_day,
+        "hottest_day": hottest_day,
+
+        "warmest_avg_day":
+            warmest_avg_record["date"],
+
+        "warmest_avg":
+            warmest_avg_record["avg"],
+
+        "coldest_avg_day":
+            coldest_avg_record["date"],
+
+        "coldest_avg":
+            coldest_avg_record["avg"],
+
+        "days_over_30": days_over_30,
+        "days_over_35": days_over_35,
+        "days_below_zero": days_below_zero,
+
+        "average_range": average_range,
+
+        "records": records
+    }
+
+
+# =========================================================
+# 제목
+# =========================================================
+
+st.title("🌡️ 서울 기온 분석")
 
 st.write(
-    f"**{first_date.year}년부터 {last_date.year}년까지**의 "
-    "서울 기온 기록을 비교합니다."
+    f"서울의 **{first_date.strftime('%Y.%m.%d')}부터 "
+    f"{last_date.strftime('%Y.%m.%d')}까지** 기온 데이터를 "
+    "원하는 기간으로 분석합니다."
 )
 
 st.caption(
-    "원하는 시작일과 종료일을 선택하면 "
-    "같은 길이의 과거 기간과 평균기온을 비교합니다."
+    "평균기온뿐 아니라 역대 순위, 최고·최저기온, "
+    "이상고온·한파일수와 장기 변화를 함께 확인할 수 있습니다."
 )
 
 st.divider()
 
 
-# ==================================================
+# =========================================================
 # 날짜 선택
-# ==================================================
+# =========================================================
 
-st.subheader("📅 비교할 기간")
+st.subheader("📅 분석 기간")
 
 col1, col2 = st.columns(2)
 
@@ -157,7 +422,7 @@ with col1:
         min_value=first_date,
         max_value=last_date,
         format="YYYY/MM/DD",
-        key="start_date"
+        key="start"
     )
 
 
@@ -169,153 +434,149 @@ with col2:
         min_value=first_date,
         max_value=last_date,
         format="YYYY/MM/DD",
-        key="end_date"
+        key="end"
     )
 
-
-# ==================================================
-# 날짜 검사
-# ==================================================
 
 if start_date > end_date:
 
     st.error(
-        "⚠️ 종료 날짜는 시작 날짜보다 뒤여야 합니다."
+        "종료 날짜는 시작 날짜보다 뒤여야 합니다."
     )
 
     st.stop()
 
-
-# ==================================================
-# 기간 길이
-# ==================================================
 
 period_days = (
     end_date - start_date
 ).days + 1
 
 
-st.caption(
-    f"선택한 기간 · **{period_days:,}일**"
+st.write(
+    f"선택한 기간: **{period_days:,}일**"
 )
 
 
-# ==================================================
-# 기간 계산 함수
-# ==================================================
+# =========================================================
+# 선택 기간 분석
+# =========================================================
 
-def calculate_period(start, days):
-
-    temperatures = []
-    min_temperatures = []
-    max_temperatures = []
-
-
-    for i in range(days):
-
-        current_date = (
-            start + timedelta(days=i)
-        )
-
-
-        # 하루라도 데이터가 없으면
-        # 비교 대상에서 제외
-        if current_date not in data_by_date:
-
-            return None
-
-
-        record = data_by_date[current_date]
-
-
-        temperatures.append(
-            record["avg"]
-        )
-
-
-        if record["min"] is not None:
-
-            min_temperatures.append(
-                record["min"]
-            )
-
-
-        if record["max"] is not None:
-
-            max_temperatures.append(
-                record["max"]
-            )
-
-
-    if not temperatures:
-
-        return None
-
-
-    average = (
-        sum(temperatures)
-        / len(temperatures)
-    )
-
-
-    minimum = (
-        min(min_temperatures)
-        if min_temperatures
-        else None
-    )
-
-
-    maximum = (
-        max(max_temperatures)
-        if max_temperatures
-        else None
-    )
-
-
-    return {
-        "average": average,
-        "minimum": minimum,
-        "maximum": maximum
-    }
-
-
-# ==================================================
-# 선택 기간 계산
-# ==================================================
-
-selected_result = calculate_period(
+selected = analyze_period(
     start_date,
-    period_days
+    end_date
 )
 
 
-if selected_result is None:
+if selected is None:
 
     st.error(
-        "선택한 기간에 누락된 기온 데이터가 있어 "
-        "평균기온을 계산할 수 없습니다."
+        "선택한 기간의 데이터를 분석할 수 없습니다."
     )
 
     st.stop()
 
 
-# ==================================================
-# 모든 동일 길이 기간 비교
-#
-# 너무 비슷한 기간이 매일 겹치는 것을 방지하기 위해
-# 비교 기간의 시작점을 1년 단위로 이동
-#
-# 예:
-# 선택 2010.01.01 ~ 2020.12.31
-#
-# 비교
-# 1908.01.01 ~ 1918.12.31
-# 1909.01.01 ~ 1919.12.31
-# 1910.01.01 ~ 1920.12.31
-# ...
-# ==================================================
+# =========================================================
+# 데이터 완성도 확인
+# =========================================================
 
-results = []
+if selected["completeness"] < 100:
+
+    st.warning(
+        f"선택한 {selected['expected_days']:,}일 중 "
+        f"{selected['actual_days']:,}일의 데이터만 존재합니다. "
+        f"데이터 완성도는 {selected['completeness']:.1f}%입니다."
+    )
+
+
+# =========================================================
+# 기본 분석
+# =========================================================
+
+st.divider()
+
+st.subheader("📊 기간 기온 요약")
+
+
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+
+    st.metric(
+        "🌡️ 평균기온",
+        f"{selected['average']:.1f}℃"
+    )
+
+
+with col2:
+
+    if selected["average_max"] is not None:
+
+        st.metric(
+            "☀️ 평균 최고기온",
+            f"{selected['average_max']:.1f}℃"
+        )
+
+
+with col3:
+
+    if selected["average_min"] is not None:
+
+        st.metric(
+            "❄️ 평균 최저기온",
+            f"{selected['average_min']:.1f}℃"
+        )
+
+
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+
+    if selected["absolute_max"] is not None:
+
+        st.metric(
+            "🔥 기간 최고기온",
+            f"{selected['absolute_max']:.1f}℃"
+        )
+
+
+with col2:
+
+    if selected["absolute_min"] is not None:
+
+        st.metric(
+            "🧊 기간 최저기온",
+            f"{selected['absolute_min']:.1f}℃"
+        )
+
+
+with col3:
+
+    if selected["average_range"] is not None:
+
+        st.metric(
+            "↕️ 평균 일교차",
+            f"{selected['average_range']:.1f}℃"
+        )
+
+
+# =========================================================
+# 역대 동일 계절 기간 비교
+# =========================================================
+
+st.divider()
+
+st.subheader("🏆 역대 기온 순위")
+
+st.caption(
+    "선택한 기간과 같은 월·일에서 시작하는 "
+    "동일한 길이의 과거 기간을 비교합니다."
+)
+
+
+historical_results = []
 
 
 for year in range(
@@ -325,16 +586,19 @@ for year in range(
 
     try:
 
-        comparison_start = start_date.replace(
-            year=year
+        comparison_start = date(
+            year,
+            start_date.month,
+            start_date.day
         )
 
     except ValueError:
 
-        # 2월 29일 → 2월 28일
-        comparison_start = start_date.replace(
-            year=year,
-            day=28
+        # 2월 29일이면 해당 연도의 2월 28일 사용
+        comparison_start = date(
+            year,
+            2,
+            28
         )
 
 
@@ -344,18 +608,16 @@ for year in range(
     )
 
 
-    # 데이터 범위를 벗어나면 제외
     if comparison_start < first_date:
         continue
-
 
     if comparison_end > last_date:
         continue
 
 
-    result = calculate_period(
+    result = analyze_period(
         comparison_start,
-        period_days
+        comparison_end
     )
 
 
@@ -363,72 +625,51 @@ for year in range(
         continue
 
 
-    results.append({
-        "start": comparison_start,
-        "end": comparison_end,
-        "average": result["average"],
-        "minimum": result["minimum"],
-        "maximum": result["maximum"]
-    })
+    # 데이터가 95% 이상 있는 기간만 순위에 사용
+    if result["completeness"] < 95:
+        continue
 
 
-# ==================================================
-# 선택한 기간이 목록에 없는 경우 추가
-# ==================================================
-
-selected_exists = False
+    historical_results.append(
+        result
+    )
 
 
-for result in results:
+# 선택 기간이 기존 비교에 없다면 추가
+selected_exists = any(
 
-    if (
-        result["start"] == start_date
-        and
-        result["end"] == end_date
-    ):
+    r["start"] == start_date
+    and r["end"] == end_date
 
-        selected_exists = True
-        break
+    for r in historical_results
+)
 
 
 if not selected_exists:
 
-    results.append({
-        "start": start_date,
-        "end": end_date,
-        "average": selected_result["average"],
-        "minimum": selected_result["minimum"],
-        "maximum": selected_result["maximum"]
-    })
+    historical_results.append(
+        selected
+    )
 
 
-# ==================================================
-# 평균기온 순 정렬
-# ==================================================
+# =========================================================
+# 평균기온 순위
+# =========================================================
 
-results.sort(
+average_ranking = sorted(
+    historical_results,
     key=lambda x: x["average"],
     reverse=True
 )
 
 
-# ==================================================
-# 순위 부여
-# ==================================================
-
-for index, result in enumerate(results):
-
-    result["rank"] = index + 1
+selected_average_rank = None
 
 
-# ==================================================
-# 선택한 기간 순위 찾기
-# ==================================================
-
-selected_rank_result = None
-
-
-for result in results:
+for index, result in enumerate(
+    average_ranking,
+    start=1
+):
 
     if (
         result["start"] == start_date
@@ -436,144 +677,196 @@ for result in results:
         result["end"] == end_date
     ):
 
-        selected_rank_result = result
+        selected_average_rank = index
         break
 
 
-if selected_rank_result is None:
-
-    st.error(
-        "순위를 계산하지 못했습니다."
-    )
-
-    st.stop()
-
-
-# ==================================================
-# 결과값
-# ==================================================
-
-rank = selected_rank_result["rank"]
-
-total = len(results)
-
-average = selected_rank_result["average"]
-
-percentile = (
-    rank / total
-) * 100
-
-
-# ==================================================
-# 평가 문구
-# ==================================================
-
-if rank == 1:
-
-    emoji = "🏆"
-
-    message = "가장 더웠던 기간"
-
-    detail = (
-        "비교 가능한 같은 길이의 기간 중 "
-        "평균기온이 가장 높습니다."
-    )
-
-
-elif percentile <= 5:
-
-    emoji = "🔥"
-
-    message = "역대급으로 더웠던 기간"
-
-    detail = (
-        f"전체 비교 기간 중 "
-        f"상위 {percentile:.1f}%입니다."
-    )
-
-
-elif percentile <= 20:
-
-    emoji = "☀️"
-
-    message = "상당히 더웠던 기간"
-
-    detail = (
-        f"전체 비교 기간 중 "
-        f"상위 {percentile:.1f}%입니다."
-    )
-
-
-elif percentile <= 50:
-
-    emoji = "🌤️"
-
-    message = "비교적 따뜻했던 기간"
-
-    detail = (
-        f"총 {total}개 기간과 비교했습니다."
-    )
-
-
-else:
-
-    emoji = "🌿"
-
-    message = "비교적 선선했던 기간"
-
-    detail = (
-        f"총 {total}개 기간과 비교했습니다."
-    )
-
-
-# ==================================================
-# 결과 화면
-# ==================================================
-
-st.write("")
-st.divider()
-
-
-# --------------------------------------------------
-# 선택 기간
-# --------------------------------------------------
-
-st.caption("선택한 기간")
-
-st.subheader(
-    f"{start_date.strftime('%Y.%m.%d')} "
-    f"→ "
-    f"{end_date.strftime('%Y.%m.%d')}"
-)
-
-st.caption(
-    f"총 {period_days:,}일"
+total_periods = len(
+    average_ranking
 )
 
 
-# --------------------------------------------------
-# 순위
-# --------------------------------------------------
+# =========================================================
+# 평균 최고기온 순위
+# =========================================================
 
-st.write("")
+max_ranking = [
+    r
+    for r in historical_results
+    if r["average_max"] is not None
+]
 
-st.markdown(
-    f"### {emoji} {total}개 기간 중 평균기온 순위"
-)
 
-st.markdown(
-    f"# {rank}위"
-)
-
-st.caption(
-    "같은 시작 월·일에서 시작하는 "
-    "동일한 길이의 기간과 비교했습니다."
+max_ranking.sort(
+    key=lambda x: x["average_max"],
+    reverse=True
 )
 
 
-# --------------------------------------------------
-# 기온
-# --------------------------------------------------
+selected_max_rank = None
+
+
+for index, result in enumerate(
+    max_ranking,
+    start=1
+):
+
+    if (
+        result["start"] == start_date
+        and
+        result["end"] == end_date
+    ):
+
+        selected_max_rank = index
+        break
+
+
+# =========================================================
+# 평균 최저기온 순위
+# =========================================================
+
+min_ranking = [
+    r
+    for r in historical_results
+    if r["average_min"] is not None
+]
+
+
+min_ranking.sort(
+    key=lambda x: x["average_min"],
+    reverse=True
+)
+
+
+selected_min_rank = None
+
+
+for index, result in enumerate(
+    min_ranking,
+    start=1
+):
+
+    if (
+        result["start"] == start_date
+        and
+        result["end"] == end_date
+    ):
+
+        selected_min_rank = index
+        break
+
+
+# =========================================================
+# 순위 출력
+# =========================================================
+
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+
+    if selected_average_rank is not None:
+
+        st.metric(
+            "🌡️ 평균기온 순위",
+            f"{selected_average_rank}위",
+            f"{total_periods}개 기간"
+        )
+
+
+with col2:
+
+    if selected_max_rank is not None:
+
+        st.metric(
+            "☀️ 평균 최고기온 순위",
+            f"{selected_max_rank}위",
+            f"{len(max_ranking)}개 기간"
+        )
+
+
+with col3:
+
+    if selected_min_rank is not None:
+
+        st.metric(
+            "🌙 평균 최저기온 순위",
+            f"{selected_min_rank}위",
+            f"{len(min_ranking)}개 기간"
+        )
+
+
+# =========================================================
+# 상위 비율
+# =========================================================
+
+if selected_average_rank is not None:
+
+    top_percent = (
+        selected_average_rank
+        / total_periods
+    ) * 100
+
+
+    if selected_average_rank == 1:
+
+        st.success(
+            "🏆 같은 계절·기간의 기록 중 "
+            "**평균기온이 가장 높습니다.**"
+        )
+
+
+    elif top_percent <= 5:
+
+        st.warning(
+            f"🔥 평균기온 기준 "
+            f"**상위 {top_percent:.1f}%**에 해당하는 "
+            "매우 더운 기간입니다."
+        )
+
+
+    elif top_percent <= 20:
+
+        st.warning(
+            f"☀️ 평균기온 기준 "
+            f"**상위 {top_percent:.1f}%**에 해당합니다."
+        )
+
+
+    elif top_percent <= 50:
+
+        st.info(
+            "🌤️ 역대 같은 기간과 비교하면 "
+            "평균보다 따뜻한 편입니다."
+        )
+
+
+    else:
+
+        st.info(
+            "🌿 역대 같은 기간과 비교하면 "
+            "상대적으로 선선한 편입니다."
+        )
+
+
+# =========================================================
+# 역사적 평균
+# =========================================================
+
+historical_average = (
+    sum(
+        r["average"]
+        for r in historical_results
+    )
+    / len(historical_results)
+)
+
+
+difference = (
+    selected["average"]
+    - historical_average
+)
+
 
 st.write("")
 
@@ -583,164 +876,142 @@ col1, col2, col3 = st.columns(3)
 with col1:
 
     st.metric(
-        "🌡️ 평균기온",
-        f"{average:.1f}℃"
+        "역대 같은 기간 평균",
+        f"{historical_average:.1f}℃"
     )
 
 
 with col2:
 
-    if selected_rank_result["maximum"] is not None:
-
-        st.metric(
-            "🔺 최고기온",
-            f"{selected_rank_result['maximum']:.1f}℃"
-        )
-
-    else:
-
-        st.metric(
-            "🔺 최고기온",
-            "-"
-        )
+    st.metric(
+        "선택 기간",
+        f"{selected['average']:.1f}℃",
+        f"{difference:+.1f}℃"
+    )
 
 
 with col3:
 
-    if selected_rank_result["minimum"] is not None:
+    if difference > 0:
 
-        st.metric(
-            "🔻 최저기온",
-            f"{selected_rank_result['minimum']:.1f}℃"
-        )
+        comparison_text = "더 높음"
+
+    elif difference < 0:
+
+        comparison_text = "더 낮음"
 
     else:
 
+        comparison_text = "같음"
+
+
+    st.metric(
+        "역대 평균과 비교",
+        comparison_text
+    )
+
+
+# =========================================================
+# 극한 기온 분석
+# =========================================================
+
+st.divider()
+
+st.subheader("🔥❄️ 극한 기온")
+
+
+col1, col2 = st.columns(2)
+
+
+with col1:
+
+    st.markdown("#### 🔥 가장 더웠던 날")
+
+    if selected["hottest_day"]:
+
         st.metric(
-            "🔻 최저기온",
-            "-"
+            selected["hottest_day"].strftime(
+                "%Y.%m.%d"
+            ),
+            f"{selected['absolute_max']:.1f}℃"
         )
 
 
-# ==================================================
-# 평가 메시지
-# ==================================================
+with col2:
 
-st.write("")
+    st.markdown("#### ❄️ 가장 추웠던 날")
 
+    if selected["coldest_day"]:
 
-if rank == 1:
-
-    st.success(
-        f"🏆 **{message}**\n\n"
-        f"{detail}"
-    )
-
-
-elif percentile <= 20:
-
-    st.warning(
-        f"{emoji} **{message}**\n\n"
-        f"{detail}"
-    )
+        st.metric(
+            selected["coldest_day"].strftime(
+                "%Y.%m.%d"
+            ),
+            f"{selected['absolute_min']:.1f}℃"
+        )
 
 
-else:
+# =========================================================
+# 기온 특징
+# =========================================================
 
-    st.info(
-        f"{emoji} **{message}**\n\n"
-        f"{detail}"
-    )
-
-
-# ==================================================
-# TOP 5
-# ==================================================
-
-st.write("")
 st.divider()
 
-st.subheader("🏅 동일 기간 길이 TOP 5")
-
-st.caption(
-    f"{period_days:,}일 동안의 평균기온 비교"
-)
+st.subheader("🔎 기간 특징")
 
 
-for result in results[:5]:
+col1, col2, col3 = st.columns(3)
 
-    # 순위 표시
-    if result["rank"] == 1:
 
+with col1:
+
+    st.metric(
+        "☀️ 30℃ 이상",
+        f"{selected['days_over_30']:,}일"
+    )
+
+
+with col2:
+
+    st.metric(
+        "🔥 35℃ 이상",
+        f"{selected['days_over_35']:,}일"
+    )
+
+
+with col3:
+
+    st.metric(
+        "❄️ 영하",
+        f"{selected['days_below_zero']:,}일"
+    )
+
+
+# =========================================================
+# TOP 5
+# =========================================================
+
+st.divider()
+
+st.subheader("🏅 평균기온 TOP 5")
+
+
+for index, result in enumerate(
+    average_ranking[:5],
+    start=1
+):
+
+    if index == 1:
         medal = "🥇"
 
-    elif result["rank"] == 2:
-
+    elif index == 2:
         medal = "🥈"
 
-    elif result["rank"] == 3:
-
+    elif index == 3:
         medal = "🥉"
 
     else:
-
-        medal = f"{result['rank']}위"
-
-
-    col_rank, col_period, col_temp = st.columns(
-        [1, 4, 2]
-    )
-
-
-    with col_rank:
-
-        st.markdown(
-            f"### {medal}"
-        )
-
-
-    with col_period:
-
-        period_text = (
-            f"{result['start'].strftime('%Y.%m.%d')}"
-            f" ~ "
-            f"{result['end'].strftime('%Y.%m.%d')}"
-        )
-
-
-        if (
-            result["start"] == start_date
-            and
-            result["end"] == end_date
-        ):
-
-            st.markdown(
-                f"**{period_text}**  ← 선택"
-            )
-
-        else:
-
-            st.markdown(
-                f"**{period_text}**"
-            )
-
-
-    with col_temp:
-
-        st.markdown(
-            f"### {result['average']:.1f}℃"
-        )
-
-
-# ==================================================
-# 선택 기간이 TOP 5 밖일 경우
-# ==================================================
-
-if rank > 5:
-
-    st.write("")
-
-    st.caption("내가 선택한 기간")
+        medal = f"{index}위"
 
 
     col1, col2, col3 = st.columns(
@@ -751,65 +1022,176 @@ if rank > 5:
     with col1:
 
         st.markdown(
-            f"### {rank}위"
+            f"### {medal}"
+        )
+
+
+    with col2:
+
+        period_text = (
+            f"{result['start'].strftime('%Y.%m.%d')}"
+            f" ~ "
+            f"{result['end'].strftime('%Y.%m.%d')}"
+        )
+
+
+        if (
+            result["start"] == start_date
+            and result["end"] == end_date
+        ):
+
+            st.markdown(
+                f"**{period_text}** ← 선택"
+            )
+
+        else:
+
+            st.markdown(
+                f"**{period_text}**"
+            )
+
+
+    with col3:
+
+        st.markdown(
+            f"### {result['average']:.1f}℃"
+        )
+
+
+# =========================================================
+# 선택 기간이 TOP 5 밖이면 표시
+# =========================================================
+
+if (
+    selected_average_rank is not None
+    and selected_average_rank > 5
+):
+
+    st.write("")
+
+    st.caption("내가 선택한 기간")
+
+    col1, col2, col3 = st.columns(
+        [1, 4, 2]
+    )
+
+
+    with col1:
+
+        st.markdown(
+            f"### {selected_average_rank}위"
         )
 
 
     with col2:
 
         st.markdown(
-            f"**{start_date.strftime('%Y.%m.%d')}"
-            f" ~ "
-            f"{end_date.strftime('%Y.%m.%d')}**"
+            f"**{start_date.strftime('%Y.%m.%d')} "
+            f"~ {end_date.strftime('%Y.%m.%d')}**"
         )
 
 
     with col3:
 
         st.markdown(
-            f"### {average:.1f}℃"
+            f"### {selected['average']:.1f}℃"
         )
 
 
-# ==================================================
-# TOP 10 그래프
-# ==================================================
+# =========================================================
+# 연도별 비교 그래프
+# =========================================================
 
-st.write("")
 st.divider()
 
-st.subheader("📊 평균기온 TOP 10")
+st.subheader("📈 장기 기온 변화")
+
+st.caption(
+    "선택한 기간과 같은 계절·길이의 평균기온이 "
+    "시간이 지나면서 어떻게 변했는지 보여줍니다."
+)
 
 
-chart_data = {}
+trend_data = {}
 
 
-for result in results[:10]:
+for result in sorted(
+    historical_results,
+    key=lambda x: x["start"]
+):
+
+    trend_data[
+        str(result["start"].year)
+    ] = result["average"]
+
+
+st.line_chart(
+    trend_data,
+    y_label="평균기온 (℃)"
+)
+
+
+# =========================================================
+# TOP 10 그래프
+# =========================================================
+
+st.divider()
+
+st.subheader("📊 가장 더웠던 기간 TOP 10")
+
+
+top10_data = {}
+
+
+for result in average_ranking[:10]:
 
     label = str(
         result["start"].year
     )
 
-    chart_data[label] = (
+    top10_data[label] = (
         result["average"]
     )
 
 
 st.bar_chart(
-    chart_data,
+    top10_data,
     y_label="평균기온 (℃)"
 )
 
 
-# ==================================================
-# 데이터 정보
-# ==================================================
+# =========================================================
+# 분석 설명
+# =========================================================
 
-st.write("")
+st.divider()
+
+st.subheader("ℹ️ 분석 기준")
+
+st.write(
+    """
+- **평균기온**: 선택한 기간의 일평균기온 평균
+- **평균 최고기온**: 매일의 최고기온을 기간 전체에서 평균
+- **평균 최저기온**: 매일의 최저기온을 기간 전체에서 평균
+- **기간 최고기온**: 선택 기간 중 가장 높은 기온
+- **기간 최저기온**: 선택 기간 중 가장 낮은 기온
+- **역대 순위**: 같은 월·일에서 시작하는 동일 길이의 기간끼리 비교
+- **30℃ 이상**: 일 최고기온이 30℃ 이상인 날
+- **35℃ 이상**: 일 최고기온이 35℃ 이상인 날
+- **영하**: 일 최저기온이 0℃ 미만인 날
+"""
+)
+
+
+# =========================================================
+# 데이터 정보
+# =========================================================
+
 st.divider()
 
 st.caption(
     f"서울 기온 데이터 · "
     f"{first_date.strftime('%Y.%m.%d')} ~ "
-    f"{last_date.strftime('%Y.%m.%d')}"
+    f"{last_date.strftime('%Y.%m.%d')} · "
+    f"총 {len(data):,}일 기록"
 )
